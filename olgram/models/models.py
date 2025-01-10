@@ -125,6 +125,10 @@ class GroupChat(Model):
     chat_id = fields.BigIntField(index=True, unique=True)
     name = fields.CharField(max_length=255)
 
+    @property
+    def telegram_id(self):
+        return self.chat_id
+
     class Meta:
         table = 'group_chat'
 

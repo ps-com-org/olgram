@@ -35,21 +35,21 @@ def button_text_limit(data: str) -> str:
     return wrap(data, 30)
 
 
-async def send_stored_message(storage: dict, bot: AioBot, chat_id: int):
-    content_type = storage["mailing_content_type"]
+async def send_stored_message(storage: dict, bot: AioBot, chat_id: int, scope: str):
+    content_type = storage[f"{scope}_content_type"]
     if content_type == types.ContentType.TEXT:
-        return await bot.send_message(chat_id, storage["mailing_text"], parse_mode="HTML")
+        return await bot.send_message(chat_id, storage[f"{scope}_text"], parse_mode="HTML")
     if content_type == types.ContentType.LOCATION:
-        return await bot.send_location(chat_id, storage["mailing_location"][0], storage["mailing_location"][1])
+        return await bot.send_location(chat_id, storage[f"{scope}_location"][0], storage[f"{scope}_location"][1])
     if content_type in (types.ContentType.AUDIO, types.ContentType.VIDEO, types.ContentType.DOCUMENT,
                         types.ContentType.PHOTO):
-        caption = storage.get("mailing_caption")
-        if storage.get("mailing_id"):
+        caption = storage.get(f"{scope}_caption")
+        if storage.get(f"{scope}_id"):
             logging.info("Mailing use file id")
-            obj = storage["mailing_id"]
+            obj = storage[f"{scope}_id"]
         else:
             logging.info("Mailing upload file")
-            obj = types.InputFile(BytesIO(storage["mailing_data"]), filename=storage.get("mailing_file_name"))
+            obj = types.InputFile(BytesIO(storage[f"{scope}_data"]), filename=storage.get(f"{scope}_file_name"))
 
         if content_type == types.ContentType.AUDIO:
             return (await bot.send_audio(chat_id, audio=obj, caption=caption)).audio.file_id

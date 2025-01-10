@@ -129,6 +129,11 @@ async def send_bot_menu(bot: Bot, call: types.CallbackQuery):
                                    callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="settings",
                                                                    chat=empty))
     )
+    keyboard.insert(
+        types.InlineKeyboardButton(text=_("Объявления"),
+                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="go_announcement",
+                                                                   chat=empty))
+    )
     if bot.enable_mailing:
         keyboard.insert(
             types.InlineKeyboardButton(text=_("Рассылка"),
@@ -336,6 +341,31 @@ async def send_bot_mailing_menu(bot: Bot, call: ty.Optional[types.CallbackQuery]
         await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
 
 
+async def send_bot_announcement_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None,
+                                chat_id: ty.Optional[int] = None):
+    if call:
+        await call.answer()
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
+    keyboard.insert(
+        types.InlineKeyboardButton(text=_("<< Отменить рассылку"),
+                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+    )
+
+    text = dedent(_("""
+    Напишите объявление, которое нужно разослать по чатам вашего бота @{0}. 
+    Список чатов: {1}.
+    Учтите, что
+    1. Рассылается только одно сообщение за раз (в т.ч. только одна картинка)
+    2. Когда рассылка запущена, её нельзя отменить
+    3. Проверьте список чатов для рассылки.
+    """))
+    text = text.format(bot.name, ', '.join(chat.name for chat in await bot.group_chats))
+    if call:
+        await edit_or_create(call, text, keyboard, parse_mode="HTML")
+    else:
+        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+
+
 @dp.message_handler(state="wait_mailing_text",
                     content_types=[types.ContentType.TEXT,
                                    types.ContentType.LOCATION,
@@ -346,38 +376,8 @@ async def send_bot_mailing_menu(bot: Bot, call: ty.Optional[types.CallbackQuery]
 async def mailing_text_received(message: types.Message, state: FSMContext):
     async with state.proxy() as proxy:
         bot_id = proxy["bot_id"]
-        proxy["mailing_content_type"] = message.content_type
-
-        buffer = BytesIO()
-
-        if message.content_type == types.ContentType.TEXT:
-            proxy["mailing_text"] = message.html_text
-        elif message.content_type == types.ContentType.LOCATION:
-            proxy["mailing_location"] = message.location
-        elif message.content_type in (types.ContentType.PHOTO, types.ContentType.DOCUMENT, types.ContentType.AUDIO,
-                types.ContentType.VIDEO):
-            proxy["mailing_caption"] = message.caption
-
-            if message.content_type == types.ContentType.PHOTO:
-                obj = message.photo[-1]
-            elif message.content_type == types.ContentType.DOCUMENT:
-                obj = message.document
-            elif message.content_type == types.ContentType.AUDIO:
-                obj = message.audio
-            elif message.content_type == types.ContentType.VIDEO:
-                obj = message.video
-            if obj.file_size and obj.file_size > 4194304:
-                return await message.answer(_("Слишком большой файл (4 Мб максимум)"))
-
-            try:
-                await obj.download(buffer, timeout=5)
-            except Exception as err:
-                logging.error("Error downloading file")
-                logging.error(err, exc_info=True)
-                return await message.answer(_("Не удалось загрузить файл (слишком большой размер?)"))
-            proxy["mailing_data"] = buffer.getvalue()
-            proxy["mailing_file_name"] = getattr(obj, "file_name", None)
-        _message_id = await send_stored_message(proxy, AioBot.get_current(), message.chat.id)
+        await store_message(proxy, message, 'mailing')
+        _message_id = await send_stored_message(proxy, AioBot.get_current(), message.chat.id, "mailing")
 
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.insert(
@@ -393,6 +393,70 @@ async def mailing_text_received(message: types.Message, state: FSMContext):
     await AioBot.get_current().send_message(message.chat.id, reply_to_message_id=_message_id,
                                             text="Вы уверены, что хотите разослать это сообщение всем пользователям?",
                                             reply_markup=keyboard)
+
+
+@dp.message_handler(state="wait_announcement_text",
+                    content_types=[types.ContentType.TEXT,
+                                   types.ContentType.LOCATION,
+                                   types.ContentType.DOCUMENT,
+                                   types.ContentType.PHOTO,
+                                   types.ContentType.AUDIO,
+                                   types.ContentType.VIDEO])
+async def announcement_text_received(message: types.Message, state: FSMContext):
+    async with state.proxy() as proxy:
+        bot_id = proxy["bot_id"]
+        await store_message(proxy, message, "announcement")
+        _message_id = await send_stored_message(proxy, AioBot.get_current(), message.chat.id, "announcement")
+
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
+    keyboard.insert(
+        types.InlineKeyboardButton(text=_("<< Отменить рассылку"),
+                                   callback_data=menu_callback.new(level=1, bot_id=bot_id, operation=empty, chat=empty))
+    )
+    keyboard.insert(
+        types.InlineKeyboardButton(text=_("Да, начать рассылку"),
+                                   callback_data=menu_callback.new(level=3, bot_id=bot_id, operation="go_go_announcement",
+                                                                   chat=empty))
+    )
+
+    await AioBot.get_current().send_message(message.chat.id, reply_to_message_id=_message_id,
+                                            text="Вы уверены, что хотите разослать это сообщение всем чатам этого бота?",
+                                            reply_markup=keyboard)
+
+
+async def store_message(store: dict, message: types.Message, scope: str):
+    store[f"{scope}_content_type"] = message.content_type
+
+    buffer = BytesIO()
+
+    if message.content_type == types.ContentType.TEXT:
+        store[f"{scope}_text"] = message.html_text
+    elif message.content_type == types.ContentType.LOCATION:
+        store[f"{scope}_location"] = message.location
+    elif message.content_type in (types.ContentType.PHOTO, types.ContentType.DOCUMENT, types.ContentType.AUDIO,
+                                  types.ContentType.VIDEO):
+        store[f"{scope}_caption"] = message.caption
+
+        if message.content_type == types.ContentType.PHOTO:
+            obj = message.photo[-1]
+        elif message.content_type == types.ContentType.DOCUMENT:
+            obj = message.document
+        elif message.content_type == types.ContentType.AUDIO:
+            obj = message.audio
+        elif message.content_type == types.ContentType.VIDEO:
+            obj = message.video
+
+        if obj.file_size and obj.file_size > 4194304:
+            return await message.answer(_("Слишком большой файл (4 Мб максимум)"))
+
+        try:
+            await obj.download(buffer, timeout=5)
+        except Exception as err:
+            logging.error("Error downloading file")
+            logging.error(err, exc_info=True)
+            return await message.answer(_("Не удалось загрузить файл (слишком большой размер?)"))
+        store[f"{scope}_data"] = buffer.getvalue()
+        store[f"{scope}_file_name"] = getattr(obj, "file_name", None)
 
 
 async def send_bot_statistic_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None,
@@ -635,6 +699,13 @@ async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMCon
             async with state.proxy() as proxy:
                 proxy["bot_id"] = bot.id
             return await send_bot_mailing_menu(bot, call)
+        if operation == "go_announcement":
+            if not await bot.group_chats:
+                return await call.answer(_("Нет чатов для рассылки"))
+            await state.set_state("wait_announcement_text")
+            async with state.proxy() as proxy:
+                proxy["bot_id"] = bot.id
+            return await send_bot_announcement_menu(bot, call)
         if operation == "text":
             await state.set_state("wait_start_text")
             async with state.proxy() as proxy:
@@ -663,6 +734,20 @@ async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMCon
                 return await call.message.answer(_("Рассылка завершена, отправлено {0} сообщений").format(count))
             else:
                 return await call.answer(_("Устарело, создайте новую рассылку"))
+        if operation == "go_go_announcement":
+            if (await state.get_state()) == "wait_announcement_text":
+                async with state.proxy() as proxy:
+                    mailing_data = dict(proxy)
+                await state.reset_state()
+
+                if not await bot.group_chats:
+                    return await call.answer(_("Нет чатов для рассылки"))
+
+                await call.answer(_("Рассылка запущена"))
+                count = await bot_actions.go_announcement(bot, mailing_data)
+                return await call.message.answer(_("Рассылка завершена, отправлено {0} сообщений").format(count))
+            else:
+                return await call.answer(_("Устарело, создайте новое объявление"))
         if operation == "chat":
             return await bot_actions.select_chat(bot, call, callback_data.get("chat"))
         if operation == "threads":

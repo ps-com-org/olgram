@@ -9,7 +9,8 @@ from datetime import datetime
 from olgram.utils.mix import send_stored_message
 from aiogram.utils import exceptions
 from aiogram import Bot as AioBot
-from olgram.models.models import Bot, BotStartMessage, BotSecondMessage
+from typing import List, Union
+from olgram.models.models import Bot, MailingUser, GroupChat, BotStartMessage, BotSecondMessage
 from server.server import unregister_token
 from locales.locale import _
 
@@ -149,27 +150,47 @@ async def go_mailing(bot: Bot, context: dict) -> int:
     users = await bot.mailing_users
     a_bot = AioBot(bot.decrypted_token())
 
-    count = 0
+    bot.last_mailing_at = datetime.now()
+    await bot.save(update_fields=["last_mailing_at"])
+    count, bad_users = await mass_dispatch_stored_messages(a_bot, context, users, "mailing")
+    for user in bad_users:
+        await user.delete()
 
-    for user in users:
-        bot.last_mailing_at = datetime.now()
-        await bot.save(update_fields=["last_mailing_at"])
+    return count
+
+
+async def go_announcement(bot: Bot, context: dict) -> int:
+    chats = await bot.group_chats
+    a_bot = AioBot(bot.decrypted_token())
+    count, bad_chats = await mass_dispatch_stored_messages(a_bot, context, chats, "announcement")
+    for chat in bad_chats:
+        await bot.group_chats.remove(chat)
+
+    return count
+
+
+async def mass_dispatch_stored_messages(bot: AioBot, context: dict, deliverables: List[Union[MailingUser, GroupChat]], scope: str):
+    count = 0
+    bad_deliverables = []
+    for deliverable in deliverables:
         try:
             await sleep(0.05)
             try:
-                file_id = await send_stored_message(context, a_bot, user.telegram_id)
+                file_id = await send_stored_message(context, bot, deliverable.telegram_id, scope)
             except exceptions.RetryAfter as err:
                 await sleep(err.timeout)
-                file_id = await send_stored_message(context, a_bot, user.telegram_id)
+                file_id = await send_stored_message(context, bot, deliverable.telegram_id, scope)
 
             if file_id:
-                context["mailing_id"] = file_id
+                context[f"{scope}_id"] = file_id
             count += 1
-        except (exceptions.ChatNotFound, exceptions.BotBlocked, exceptions.UserDeactivated):
-            await user.delete()
+        except (exceptions.Unauthorized, exceptions.ChatNotFound, exceptions.BotBlocked, exceptions.UserDeactivated):
+            bad_deliverables.append(deliverable)
         except Exception as err:
             logging.error("mailing error")
             logging.error(err, exc_info=True)
             pass
 
-    return count
+    await bot.session.close()
+
+    return count, bad_deliverables
