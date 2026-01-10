@@ -1,7 +1,7 @@
-FROM python:3.8-buster
+FROM python:3.12-buster
 
 ENV PYTHONUNBUFFERED=1 \
-    POETRY_VERSION=1.5.1 \
+    POETRY_VERSION=1.8.2 \
     POETRY_VIRTUALENVS_CREATE="false"
 
 RUN apt-get update && \

@@ -104,8 +104,10 @@ class ServerSettings(AbstractSettings):
         return int(timedelta(days=1).total_seconds() * 1000.0)
 
 
-logging.basicConfig(level=os.environ.get("LOGLEVEL") or "WARNING",
-                    format='%(asctime)s %(levelname)-8s %(message)s')
+logging.basicConfig(
+    level=os.environ.get("LOGLEVEL") or "WARNING",
+    format='%(asctime)s %(levelname)-8s %(message)s',
+)
 
 
 class BotSettings(AbstractSettings):
@@ -151,15 +153,22 @@ class DatabaseSettings(AbstractSettings):
         return Cryptor(password)
 
 
-TORTOISE_ORM = {
-    "connections": {"default": f'postgres://{DatabaseSettings.user()}:{DatabaseSettings.password()}'
-                               f'@{DatabaseSettings.host()}/{DatabaseSettings.database_name()}'},
-    "apps": {
-        "models": {
-            "models": ["olgram.models.models", "aerich.models"],
-            "default_connection": "default",
+def get_tortoise_orm_config():
+    """Возвращает конфигурацию Tortoise ORM"""
+    return {
+        "connections": {
+            "default": f'postgres://{DatabaseSettings.user()}:{DatabaseSettings.password()}'
+                                   f'@{DatabaseSettings.host()}/{DatabaseSettings.database_name()}'},
+        "apps": {
+            "models": {
+                "models": ["olgram.models.models", "aerich.models"],
+                "default_connection": "default",
+            },
         },
-    },
-    "use_tz": False,
-    "timezone": "UTC"
-}
+        "use_tz": False,
+        "timezone": "UTC"
+    }
+
+
+# Для обратной совместимости и для aerich
+TORTOISE_ORM = get_tortoise_orm_config()

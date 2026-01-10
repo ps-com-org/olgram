@@ -13,3 +13,5 @@ backup
 *.pot
 *.patch
 mix
+docker-compose.yaml
+var

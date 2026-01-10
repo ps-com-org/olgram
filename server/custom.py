@@ -190,7 +190,7 @@ async def _increase_count(_bot):
     await _bot.save(update_fields=["incoming_messages_count"])
 
 
-async def handle_user_message(message: types.Message, super_chat_id: int, bot):
+async def handle_user_message(message: types.Message, super_chat_id: int, bot: Bot):
     """Обычный пользователь прислал сообщение в бот, нужно переслать его операторам"""
     try:
         _ = _get_translator(message)
