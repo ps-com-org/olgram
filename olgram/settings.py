@@ -66,7 +66,8 @@ class ServerSettings(AbstractSettings):
 
     @classmethod
     def app_port(cls) -> int:
-        return 80
+        port = cls._get_env("APP_PORT", allow_none=True)
+        return int(port) if port else 8080
 
     @classmethod
     def redis_path(cls) -> str:

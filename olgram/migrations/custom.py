@@ -1,6 +1,6 @@
 """Наши собственные миграции, которые нельзя описать на языке SQL и с которыми не справится TortoiseORM/Aerich"""
 
-import aioredis
+import redis.asyncio as redis
 from tortoise import transactions, Tortoise
 from olgram.settings import TORTOISE_ORM, ServerSettings
 from olgram.models.models import MetaInfo, Bot
@@ -31,13 +31,21 @@ async def upgrade_2():
         logging.info("skip")
         return
 
-    con = await aioredis.create_connection(ServerSettings.redis_path())
-    client = aioredis.Redis(con)
+    client = await redis.from_url(ServerSettings.redis_path())
 
-    i, keys = await client.scan()
-    for key in keys:
-        if not key.startswith(b"thread"):
-            await client.pexpire(key, ServerSettings.redis_timeout_ms())
+    try:
+        cursor = 0
+        keys = []
+        while True:
+            cursor, batch_keys = await client.scan(cursor, match="*", count=100)
+            keys.extend(batch_keys)
+            if cursor == 0:
+                break
+        for key in keys:
+            if not key.startswith(b"thread"):
+                await client.pexpire(key, ServerSettings.redis_timeout_ms())
+    finally:
+        await client.aclose()
 
     meta_info.version = 2
     await meta_info.save()

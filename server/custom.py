@@ -9,8 +9,7 @@ from aiogram import types
 from aiogram.dispatcher.webhook import SendMessage
 from aiogram.dispatcher.webhook import WebhookRequestHandler
 from aiohttp.web_exceptions import HTTPNotFound
-from aioredis import Redis
-from aioredis.commands import create_redis_pool
+import redis.asyncio as redis
 from tortoise.expressions import F
 
 from locales.locale import _, translators
@@ -23,7 +22,7 @@ _logger.setLevel(logging.INFO)
 
 db_bot_instance: ContextVar[Bot] = ContextVar('db_bot_instance')
 
-_redis: ty.Optional[Redis] = None
+_redis: ty.Optional[redis.Redis] = None
 
 
 def _get_translator(message: types.Message) -> ty.Callable:
@@ -37,7 +36,7 @@ def _get_translator(message: types.Message) -> ty.Callable:
 
 async def init_redis():
     global _redis
-    _redis = await create_redis_pool(ServerSettings.redis_path())
+    _redis = await redis.from_url(ServerSettings.redis_path())
 
 
 def _message_unique_id(bot_id: int, message_id: int) -> str:
@@ -104,7 +103,7 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot, tag
             pass
         if message.forward_sender_name:
             user_info += f" | fwd: {message.forward_sender_name}"
-        tag = await _redis.get(_tag_uid(bot.pk, message.from_user.id), encoding="utf-8")
+        tag = await _redis.get(_tag_uid(bot.pk, message.from_user.id))
         if tag:
             user_info += f" | tag: {tag}"
 
@@ -116,7 +115,7 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot, tag
             new_message = await message.bot.send_message(super_chat_id, text=user_info)
             new_message_2 = await message.copy_to(super_chat_id, reply_to_message_id=new_message.message_id)
             await _redis.set(_message_unique_id(bot.pk, new_message_2.message_id), message.chat.id,
-                             pexpire=ServerSettings.redis_timeout_ms())
+                             px=ServerSettings.redis_timeout_ms())
     elif tag:
         # добавлять тег в конец текста
         if message.content_type == types.ContentType.TEXT and len(message.text) + len(tag) < 4093:
@@ -125,7 +124,7 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot, tag
             new_message = await message.bot.send_message(super_chat_id, text=tag)
             new_message_2 = await message.copy_to(super_chat_id, reply_to_message_id=new_message.message_id)
             await _redis.set(_message_unique_id(bot.pk, new_message_2.message_id), message.chat.id,
-                             pexpire=ServerSettings.redis_timeout_ms())
+                             px=ServerSettings.redis_timeout_ms())
     else:
         try:
             new_message = await message.forward(super_chat_id)
@@ -133,14 +132,14 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot, tag
             new_message = await message.copy_to(super_chat_id)
 
     await _redis.set(_message_unique_id(bot.pk, new_message.message_id), message.chat.id,
-                     pexpire=ServerSettings.redis_timeout_ms())
+                     px=ServerSettings.redis_timeout_ms())
     return new_message
 
 
 async def send_to_superchat(is_super_group: bool, message: types.Message, super_chat_id: int, bot):
     """Пересылка сообщения от пользователя оператору (логика потоков сообщений)"""
     if bot.enable_tags:
-        tag = await _redis.get(_tag_uid(bot.pk, message.chat.id), encoding="utf-8")
+        tag = await _redis.get(_tag_uid(bot.pk, message.chat.id))
     else:
         tag = ""
     if tag:
@@ -167,20 +166,20 @@ async def send_to_superchat(is_super_group: bool, message: types.Message, super_
                         new_message_2 = await message.bot.send_message(
                             super_chat_id, reply_to_message_id=new_message.message_id, text=tag)
                         await _redis.set(_message_unique_id(bot.pk, new_message_2.message_id), message.chat.id,
-                                         pexpire=ServerSettings.redis_timeout_ms())
+                                         px=ServerSettings.redis_timeout_ms())
                 else:
                     new_message = await message.copy_to(super_chat_id, reply_to_message_id=int(thread_first_message))
                 await _redis.set(_message_unique_id(bot.pk, new_message.message_id), message.chat.id,
-                                 pexpire=ServerSettings.redis_timeout_ms())
+                                 px=ServerSettings.redis_timeout_ms())
             except exceptions.BadRequest:
                 new_message = await send_user_message(message, super_chat_id, bot, tag)
                 await _redis.set(
-                    _thread_unique_id(bot.pk, message.chat.id), new_message.message_id, pexpire=thread_timeout)
+                    _thread_unique_id(bot.pk, message.chat.id), new_message.message_id, px=thread_timeout)
         else:
             # переслать супер-чат
             new_message = await send_user_message(message, super_chat_id, bot, tag)
             await _redis.set(_thread_unique_id(bot.pk, message.chat.id), new_message.message_id,
-                             pexpire=ServerSettings.redis_timeout_ms())
+                             px=ServerSettings.redis_timeout_ms())
     else:  # личные сообщения не поддерживают потоки сообщений: просто отправляем сообщение
         await send_user_message(message, super_chat_id, bot, tag)
 
@@ -272,7 +271,7 @@ async def handle_operator_message(message: types.Message, super_chat_id: int, bo
                 if message.text and message.text.startswith("/tag"):
                     tag = message.text.replace("/tag", "")[:20].strip()
                     if tag:
-                        await _redis.set(_tag_uid(bot.pk, chat_id), tag, pexpire=ServerSettings.redis_timeout_ms())
+                        await _redis.set(_tag_uid(bot.pk, chat_id), tag, px=ServerSettings.redis_timeout_ms())
                         return await message.answer(text=_("Тег выставлен"))
                     else:
                         await _redis.delete(_tag_uid(bot.pk, chat_id))
@@ -283,7 +282,7 @@ async def handle_operator_message(message: types.Message, super_chat_id: int, bo
 
                 asyncio.create_task(_redis.set(_edit_message_mapping(bot.pk, message),
                                                f"{chat_id};{sen.message_id}",
-                                               pexpire=ServerSettings.redis_timeout_ms()))
+                                               px=ServerSettings.redis_timeout_ms()))
             except (exceptions.MessageError, exceptions.Unauthorized):
                 await message.reply(_("<i>Невозможно переслать сообщение (автор заблокировал бота?)</i>"),
                                     parse_mode="HTML")
@@ -341,7 +340,7 @@ async def message_handler(message: types.Message, *args, **kwargs):
 
 async def edited_message_handler(message: types.Message, *args, **kwargs):
     bot = db_bot_instance.get()
-    data = await _redis.get(_edit_message_mapping(bot.pk, message), encoding="utf-8")
+    data = await _redis.get(_edit_message_mapping(bot.pk, message))
     if not data:
         return await message_handler(message, *args, **kwargs, is_edited=True)
     chat_id, message_id = data.split(";")
