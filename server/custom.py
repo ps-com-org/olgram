@@ -36,7 +36,17 @@ def _get_translator(message: types.Message) -> ty.Callable:
 
 async def init_redis():
     global _redis
-    _redis = await redis.from_url(ServerSettings.redis_path())
+    try:
+        redis_url = ServerSettings.redis_path()
+        _logger.info(f"Подключение к Redis: {redis_url}")
+        _redis = await redis.from_url(redis_url)
+        # Проверяем подключение
+        await _redis.ping()
+        _logger.info("Успешное подключение к Redis")
+    except Exception as e:
+        _logger.error(f"Ошибка подключения к Redis: {e}", exc_info=True)
+        _redis = None
+        raise
 
 
 def _message_unique_id(bot_id: int, message_id: int) -> str:
