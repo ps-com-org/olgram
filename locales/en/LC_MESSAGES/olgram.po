@@ -803,6 +803,26 @@ msgstr "(Re)launch the bot"
 msgid "Политика конфиденциальности"
 msgstr "Privacy Policy"
 
+#: olgram/captcha/base.py olgram/captcha/math_captcha.py
+msgid "Вы временно заблокированы за неудачные попытки ввода капчи. Попробуйте позже."
+msgstr "You are temporarily blocked due to failed captcha attempts. Try again later."
+
+#: olgram/captcha/math_captcha.py
+msgid "Решите задачу: "
+msgstr "Solve the problem: "
+
+#: olgram/captcha/math_captcha.py
+msgid "Время на решение вышло. Напишите что угодно для новой задачи."
+msgstr "Time is up. Send any message to get a new task."
+
+#: olgram/captcha/math_captcha.py
+msgid "Неверно. Попробуйте ещё раз."
+msgstr "Incorrect. Try again."
+
+#: olgram/captcha/math_captcha.py
+msgid "Верно! Отправьте ваше сообщение ещё раз, пожалуйста."
+msgstr "Correct! Please send your message again."
+
 #~ msgid ""
 #~ "\n"
 #~ "\n"

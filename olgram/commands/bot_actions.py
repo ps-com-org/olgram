@@ -5,11 +5,11 @@ import logging
 
 from aiogram import types
 from asyncio import sleep
-from datetime import datetime
+from datetime import datetime, timezone
 from olgram.utils.mix import send_stored_message
 from aiogram.utils import exceptions
 from aiogram import Bot as AioBot
-from olgram.models.models import Bot, BotStartMessage, BotSecondMessage
+from olgram.models.models import Bot, BotStartMessage, BotSecondMessage, CaptchaType
 from server.server import unregister_token
 from locales.locale import _
 
@@ -133,6 +133,20 @@ async def olgram_text(bot: Bot, call: types.CallbackQuery):
 async def antiflood(bot: Bot, call: types.CallbackQuery):
     bot.enable_antiflood = not bot.enable_antiflood
     await bot.save(update_fields=["enable_antiflood"])
+
+
+async def captcha_set_type(bot: Bot, value: CaptchaType):
+    bot.captcha_type = value
+    update_fields = ["_captcha_type"]
+    if value != CaptchaType.disabled and not (bot.captcha_tag or "").strip():
+        bot.captcha_tag = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        update_fields.append("captcha_tag")
+    await bot.save(update_fields=update_fields)
+
+
+async def captcha_reset_tag(bot: Bot):
+    bot.captcha_tag = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    await bot.save(update_fields=["captcha_tag"])
 
 
 async def mailing(bot: Bot, call: types.CallbackQuery):

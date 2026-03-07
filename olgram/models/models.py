@@ -1,9 +1,15 @@
+from enum import Enum
 from tortoise.models import Model
 from tortoise import fields
 from uuid import uuid4
 from textwrap import dedent
 from olgram.settings import DatabaseSettings
 from locales.locale import _
+
+
+class CaptchaType(str, Enum):
+    disabled = "disabled"
+    math = "math"
 
 
 class MetaInfo(Model):
@@ -51,6 +57,22 @@ class Bot(Model):
     enable_mailing = fields.BooleanField(default=False)
     enable_tags = fields.BooleanField(default=False)
     last_mailing_at = fields.DatetimeField(null=True, default=None)
+    _captcha_type = fields.TextField(null=True, default=None, source_field="captcha_type")
+    captcha_tag = fields.TextField(null=True, default=None)
+
+    @property
+    def captcha_type(self) -> CaptchaType:
+        raw = self._captcha_type
+        if not raw or not raw.strip():
+            return CaptchaType.disabled
+        try:
+            return CaptchaType(raw.strip().lower())
+        except ValueError:
+            return CaptchaType.disabled
+
+    @captcha_type.setter
+    def captcha_type(self, value: CaptchaType) -> None:
+        self._captcha_type = value.value if value is not None else None
 
     def decrypted_token(self):
         cryptor = DatabaseSettings.cryptor()

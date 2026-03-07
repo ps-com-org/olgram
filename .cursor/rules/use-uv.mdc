@@ -1,0 +1,18 @@
+---
+description: Запуск команд и скриптов через uv
+alwaysApply: true
+---
+
+# Запуск через uv
+
+В этом проекте все Python-команды и скрипты нужно запускать через **uv**.
+
+- Установка зависимостей: `uv sync`
+- Запуск скриптов: `uv run python script.py` или `uv run script.py`
+- Запуск CLI-инструментов из зависимостей: `uv run aerich ...`, `uv run flake8 ...` и т.п.
+- Не использовать глобальный `python`, `pip`, `aerich` — только через `uv run`.
+
+Примеры:
+- `uv run aerich migrate --name add_captcha_type`
+- `uv run aerich upgrade`
+- `uv run python main.py`
