@@ -2,16 +2,17 @@
 Здесь метрики
 """
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
 from olgram.models import models
 
-from olgram.router import dp
+from olgram.router import router
 from olgram.settings import OlgramSettings
 from locales.locale import _
 
 
-@dp.message_handler(commands=["info"], state="*")
+@router.message(Command("info"), StateFilter("*"))
 async def info(message: types.Message, state: FSMContext):
     """
     Команда /info

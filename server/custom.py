@@ -3,12 +3,19 @@ import logging
 import typing as ty
 from contextvars import ContextVar
 
-from aiogram import Bot as AioBot, Dispatcher
-from aiogram import exceptions
+from aiogram import Bot as AioBot, Dispatcher, Router
 from aiogram import types
-from aiogram.dispatcher.webhook import SendMessage
-from aiogram.dispatcher.webhook import WebhookRequestHandler
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Update
+from aiogram.exceptions import (
+    TelegramUnauthorizedError as Unauthorized,
+    TelegramBadRequest as BadRequest,
+    TelegramRetryAfter as RetryAfter,
+    TelegramAPIError,
+    TelegramNotFound as ChatNotFound,
+)
 from aiohttp.web_exceptions import HTTPNotFound
+from aiohttp import web
 import redis.asyncio as redis
 from tortoise.expressions import F
 
@@ -73,7 +80,7 @@ def _edit_message_mapping(bot_id: int, orig_message: types.Message):
     return f"em_{bot_id}_{orig_message.chat.id}_{orig_message.message_id}"
 
 
-def _on_security_policy(message: types.Message, bot):
+async def _on_security_policy(message: types.Message, bot):
     _ = _get_translator(message)
     text = _("<b>Политика конфиденциальности</b>\n\n"
              "Этот бот не хранит ваши сообщения, имя пользователя и @username. При отправке сообщения (кроме команд "
@@ -93,7 +100,7 @@ def _on_security_policy(message: types.Message, bot):
     else:
         text += _("В этом боте нет массовой рассылки сообщений")
 
-    return SendMessage(chat_id=message.chat.id,
+    await message.bot.send_message(chat_id=message.chat.id,
                        text=text,
                        parse_mode="HTML")
 
@@ -138,7 +145,7 @@ async def send_user_message(message: types.Message, super_chat_id: int, bot, tag
     else:
         try:
             new_message = await message.forward(super_chat_id)
-        except exceptions.MessageCantBeForwarded:
+        except TelegramAPIError:
             new_message = await message.copy_to(super_chat_id)
 
     await _redis.set(_message_unique_id(bot.pk, new_message.message_id), message.chat.id,
@@ -181,7 +188,7 @@ async def send_to_superchat(is_super_group: bool, message: types.Message, super_
                     new_message = await message.copy_to(super_chat_id, reply_to_message_id=int(thread_first_message))
                 await _redis.set(_message_unique_id(bot.pk, new_message.message_id), message.chat.id,
                                  px=ServerSettings.redis_timeout_ms())
-            except exceptions.BadRequest:
+            except BadRequest:
                 new_message = await send_user_message(message, super_chat_id, bot, tag)
                 await _redis.set(
                     _thread_unique_id(bot.pk, message.chat.id), new_message.message_id, px=thread_timeout)
@@ -222,11 +229,11 @@ async def handle_user_message(message: types.Message, super_chat_id: int, bot: B
         # Пересылаем сообщение в супер-чат
         try:
             await send_to_superchat(is_super_group, message, super_chat_id, bot)
-        except (exceptions.Unauthorized, exceptions.ChatNotFound):
+        except (Unauthorized, ChatNotFound):
             return await message.answer(text=_("Не удаётся связаться с владельцем бота"))
-        except exceptions.RetryAfter:
+        except RetryAfter:
             return await message.answer(text=_("Слишком много сообщений, подождите одну минуту"))
-        except exceptions.TelegramAPIError as err:
+        except TelegramAPIError as err:
             _logger.error(f"(exception on forwarding) {err}")
             return
 
@@ -293,11 +300,11 @@ async def handle_operator_message(message: types.Message, super_chat_id: int, bo
                 asyncio.create_task(_redis.set(_edit_message_mapping(bot.pk, message),
                                                f"{chat_id};{sen.message_id}",
                                                px=ServerSettings.redis_timeout_ms()))
-            except (exceptions.MessageError, exceptions.Unauthorized):
+            except (TelegramAPIError, Unauthorized):
                 await message.reply(_("<i>Невозможно переслать сообщение (автор заблокировал бота?)</i>"),
                                     parse_mode="HTML")
                 return
-            except exceptions.BadRequest as err:
+            except BadRequest as err:
                 _logger.error(f"(exception on copying) {err}")
                 await message.reply(_("<i>Невозможно переслать сообщение</i>"),
                                     parse_mode="HTML")
@@ -332,11 +339,11 @@ async def message_handler(message: types.Message, *args, **kwargs):
         text = text_obj.text if text_obj else bot.start_text
         if bot.enable_olgram_text:
             text += _(ServerSettings.append_text())
-        return SendMessage(chat_id=message.chat.id, text=text, parse_mode="HTML")
+        await message.answer(text=text, parse_mode="HTML")
 
     if message.text and message.text == "/security_policy":
         # На команду security_policy нужно ответить, не пересылая сообщение никуда
-        return _on_security_policy(message, bot)
+        return await _on_security_policy(message, bot)
 
     super_chat_id = await bot.super_chat_id()
 
@@ -416,20 +423,19 @@ async def receive_migrate(message: types.Message):
         await chat.save(update_fields=["chat_id"])
 
 
-class CustomRequestHandler(WebhookRequestHandler):
-
-    def __init__(self, *args, **kwargs):
-        self._dispatcher = None
-        super(CustomRequestHandler, self).__init__(*args, **kwargs)
-
-    async def _create_dispatcher(self):
-        key = self.request.url.path[1:]
+class CustomRequestHandler:
+    async def __call__(self, request):
+        key = request.url.path[1:]
 
         bot = await Bot.filter(code=key).first()
         if not bot:
-            return None
+            raise HTTPNotFound()
+        
         db_bot_instance.set(bot)
-        dp = Dispatcher(AioBot(bot.decrypted_token()))
+        aio_bot = AioBot(bot.decrypted_token())
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage)
+        router_instance = Router()
 
         supported_messages = [types.ContentType.TEXT,
                               types.ContentType.CONTACT,
@@ -441,30 +447,47 @@ class CustomRequestHandler(WebhookRequestHandler):
                               types.ContentType.VIDEO,
                               types.ContentType.VOICE,
                               types.ContentType.LOCATION]
-        dp.register_message_handler(message_handler, content_types=supported_messages)
-        dp.register_edited_message_handler(edited_message_handler, content_types=supported_messages)
+        
+        def content_type_filter(content_types):
+            def check(message: types.Message):
+                return message.content_type in content_types
+            return check
+        
+        @router_instance.message(content_type_filter(supported_messages))
+        async def handle_message(message: types.Message):
+            return await message_handler(message)
+        
+        @router_instance.edited_message(content_type_filter(supported_messages))
+        async def handle_edited_message(message: types.Message):
+            return await edited_message_handler(message)
 
-        dp.register_message_handler(receive_invite, content_types=[types.ContentType.NEW_CHAT_MEMBERS])
-        dp.register_message_handler(receive_left, content_types=[types.ContentType.LEFT_CHAT_MEMBER])
-        dp.register_message_handler(receive_migrate, content_types=[types.ContentType.MIGRATE_TO_CHAT_ID])
-        dp.register_message_handler(receive_group_create, content_types=[types.ContentType.GROUP_CHAT_CREATED])
-        dp.register_inline_handler(receive_inline)
+        @router_instance.message(lambda m: m.content_type == types.ContentType.NEW_CHAT_MEMBERS)
+        async def handle_invite(message: types.Message):
+            return await receive_invite(message)
 
-        return dp
+        @router_instance.message(lambda m: m.content_type == types.ContentType.LEFT_CHAT_MEMBER)
+        async def handle_left(message: types.Message):
+            return await receive_left(message)
 
-    async def post(self):
-        dispatcher = await self._create_dispatcher()
-        if not dispatcher:
-            raise HTTPNotFound()
+        @router_instance.message(lambda m: m.content_type == types.ContentType.MIGRATE_TO_CHAT_ID)
+        async def handle_migrate(message: types.Message):
+            return await receive_migrate(message)
 
-        Dispatcher.set_current(dispatcher)
-        AioBot.set_current(dispatcher.bot)
-        return await super(CustomRequestHandler, self).post()
+        @router_instance.message(lambda m: m.content_type == types.ContentType.GROUP_CHAT_CREATED)
+        async def handle_group_create(message: types.Message):
+            return await receive_group_create(message)
 
-    def get_dispatcher(self):
-        """
-        Get Dispatcher instance from environment
+        @router_instance.inline_query()
+        async def handle_inline(inline_query: types.InlineQuery):
+            return await receive_inline(inline_query)
 
-        :return: :class:`aiogram.Dispatcher`
-        """
-        return Dispatcher.get_current()
+        dp.include_router(router_instance)
+
+        # Получаем обновление из запроса
+        update_data = await request.json()
+        update = Update(**update_data)
+        
+        # Обрабатываем обновление
+        await dp.feed_update(aio_bot, update)
+        
+        return web.Response(text="OK")

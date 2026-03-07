@@ -1,7 +1,7 @@
 from aiocache import cached
 import hashlib
 from aiogram.types import InlineQuery, InputTextMessageContent, InlineQueryResultArticle
-from aiogram.bot import Bot as AioBot
+from aiogram import Bot as AioBot
 
 from olgram.models.models import Bot
 import typing as ty

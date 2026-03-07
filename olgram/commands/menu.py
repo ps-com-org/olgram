@@ -1,11 +1,11 @@
 import logging
 from io import BytesIO
-from olgram.router import dp
+from olgram.router import router, bot as main_bot
 from datetime import datetime, timedelta, timezone
-from aiogram import types, Bot as AioBot
+from aiogram import types, Bot as AioBot, Router
 from olgram.models.models import Bot, User, DefaultAnswer, BotStartMessage, BotSecondMessage
-from aiogram.dispatcher import FSMContext
-from aiogram.utils.callback_data import CallbackData
+from aiogram.filters import StateFilter
+from aiogram.fsm.context import FSMContext
 from textwrap import dedent
 from olgram.utils.mix import edit_or_create, button_text_limit, wrap, send_stored_message
 from olgram.commands import bot_actions
@@ -14,12 +14,28 @@ from locales.locale import _
 import typing as ty
 
 
-menu_callback = CallbackData('menu', 'level', 'bot_id', 'operation', 'chat')
+def create_callback_data(level: str, bot_id: str, operation: str, chat: str) -> str:
+    """Создать callback_data строку"""
+    return f"menu:{level}:{bot_id}:{operation}:{chat}"
+
+
+def parse_callback_data(callback_data: str) -> dict:
+    """Парсить callback_data строку"""
+    parts = callback_data.split(":", 4)
+    if len(parts) != 5 or parts[0] != "menu":
+        return {}
+    return {
+        "level": parts[1],
+        "bot_id": parts[2],
+        "operation": parts[3],
+        "chat": parts[4]
+    }
+
 
 empty = "0"
 
 
-async def send_bots_menu(chat_id: int, user_id: int, call=None):
+async def send_bots_menu(chat_id: int, user_id: int, call=None, bot_instance: AioBot = None):
     """
     Отправить пользователю список ботов
     :return:
@@ -27,10 +43,13 @@ async def send_bots_menu(chat_id: int, user_id: int, call=None):
     if call:
         await call.answer()
 
+    if bot_instance is None:
+        bot_instance = main_bot
+
     user = await User.get_or_none(telegram_id=user_id)
     bots = await Bot.filter(owner=user)
     if not bots:
-        await AioBot.get_current().send_message(chat_id, dedent(_("""
+        await bot_instance.send_message(chat_id, dedent(_("""
         У вас нет добавленных ботов.
 
         Отправьте команду /addbot, чтобы добавить бот.
@@ -41,7 +60,7 @@ async def send_bots_menu(chat_id: int, user_id: int, call=None):
     for bot in bots:
         keyboard.insert(
             types.InlineKeyboardButton(text="@" + bot.name,
-                                       callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty,
+                                       callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty,
                                                                        chat=empty))
         )
 
@@ -49,7 +68,7 @@ async def send_bots_menu(chat_id: int, user_id: int, call=None):
     if call:
         await edit_or_create(call, text, keyboard)
     else:
-        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard)
+        await bot_instance.send_message(chat_id, text, reply_markup=keyboard)
 
 
 async def send_chats_menu(bot: Bot, call: types.CallbackQuery):
@@ -61,23 +80,23 @@ async def send_chats_menu(bot: Bot, call: types.CallbackQuery):
     for chat in chats:
         keyboard.insert(
             types.InlineKeyboardButton(text=button_text_limit(chat.name),
-                                       callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="chat",
+                                       callback_data=create_callback_data(level=3, bot_id=bot.id, operation="chat",
                                                                        chat=chat.id))
         )
     if chats:
         keyboard.insert(
             types.InlineKeyboardButton(text=_("Личные сообщения"),
-                                       callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="chat",
+                                       callback_data=create_callback_data(level=3, bot_id=bot.id, operation="chat",
                                                                        chat="personal"))
         )
         keyboard.insert(
             types.InlineKeyboardButton(text=_("❗️ Выйти из всех чатов"),
-                                       callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="chat",
+                                       callback_data=create_callback_data(level=3, bot_id=bot.id, operation="chat",
                                                                        chat="leave"))
         )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Назад"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty,
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty,
                                                                    chat=empty))
     )
 
@@ -102,37 +121,37 @@ async def send_bot_menu(bot: Bot, call: types.CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Текст"),
-                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="text",
+                                   callback_data=create_callback_data(level="2", bot_id=str(bot.id), operation="text",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Чат"),
-                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="chat",
+                                   callback_data=create_callback_data(level="2", bot_id=str(bot.id), operation="chat",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Удалить бот"),
-                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="delete",
+                                   callback_data=create_callback_data(level=2, bot_id=bot.id, operation="delete",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Статистика"),
-                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="stat",
+                                   callback_data=create_callback_data(level="2", bot_id=str(bot.id), operation="stat",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Назад"),
-                                   callback_data=menu_callback.new(level=0, bot_id=empty, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="0", bot_id=empty, operation=empty, chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Опции"),
-                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="settings",
+                                   callback_data=create_callback_data(level="2", bot_id=str(bot.id), operation="settings",
                                                                    chat=empty))
     )
     if bot.enable_mailing:
         keyboard.insert(
             types.InlineKeyboardButton(text=_("Рассылка"),
-                                       callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="go_mailing",
+                                       callback_data=create_callback_data(level=2, bot_id=bot.id, operation="go_mailing",
                                                                        chat=empty))
         )
 
@@ -149,12 +168,12 @@ async def send_bot_delete_menu(bot: Bot, call: types.CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Да, удалить бот"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="delete_yes",
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id, operation="delete_yes",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Назад"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty, chat=empty))
     )
 
     await edit_or_create(call, dedent(_("""
@@ -167,39 +186,39 @@ async def send_bot_settings_menu(bot: Bot, call: types.CallbackQuery):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Потоки сообщений"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="threads",
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id, operation="threads",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Данные пользователя"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="additional_info",
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id, operation="additional_info",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Антифлуд"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="antiflood",
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id, operation="antiflood",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Автоответчик всегда"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id,
                                                                    operation="always_second_message",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Рассылка"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="mailing",
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id, operation="mailing",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Прерывать поток"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id,
                                                                    operation="thread_interrupt",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Теги"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                   callback_data=create_callback_data(level=3, bot_id=bot.id,
                                                                    operation="tags",
                                                                    chat=empty))
     )
@@ -207,13 +226,13 @@ async def send_bot_settings_menu(bot: Bot, call: types.CallbackQuery):
     if is_promo:
         keyboard.insert(
             types.InlineKeyboardButton(text=_("Olgram подпись"),
-                                       callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="olgram_text",
+                                       callback_data=create_callback_data(level=3, bot_id=bot.id, operation="olgram_text",
                                                                        chat=empty))
         )
 
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Назад"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty,
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty,
                                                                    chat=empty))
     )
 
@@ -253,33 +272,39 @@ languages = {
 
 
 async def send_bot_text_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None, chat_id: ty.Optional[int] = None,
-                             state=None):
+                             state=None, bot_instance: AioBot = None):
     if call:
         await call.answer()
 
-    async with state.proxy() as proxy:
-        lang = proxy.get("lang", "none")
+    if bot_instance is None:
+        bot_instance = main_bot
+
+    if state:
+        data = await state.get_data()
+        lang = data.get("lang", "none")
+    else:
+        lang = "none"
 
     prepared_languages = {ln.locale: ln.text for ln in await bot.start_texts}
 
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Завершить редактирование"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty, chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Автоответчик"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="next_text",
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot.id), operation="next_text",
                                                                    chat=empty))
     )
     keyboard.row(
         types.InlineKeyboardButton(text=_("Сбросить текст"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="reset_text",
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot.id), operation="reset_text",
                                                                    chat=empty))
     )
     keyboard.add(
         types.InlineKeyboardButton(text=("🟢 " if lang == "none" else "") + _("[все языки]"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot.id),
                                                                    operation="slang_none", chat=empty))
     )
     for code, name in languages.items():
@@ -290,7 +315,7 @@ async def send_bot_text_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = 
             prefix = "✔️ "
         keyboard.insert(
             types.InlineKeyboardButton(text=prefix + name,
-                                       callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                       callback_data=create_callback_data(level="3", bot_id=str(bot.id),
                                                                        operation=f"slang_{code}",
                                                                        chat=empty))
         )
@@ -309,17 +334,19 @@ async def send_bot_text_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = 
     if call:
         await edit_or_create(call, text, keyboard, parse_mode="HTML")
     else:
-        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+        await bot_instance.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
 
 
 async def send_bot_mailing_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None,
-                                chat_id: ty.Optional[int] = None):
+                                chat_id: ty.Optional[int] = None, bot_instance: AioBot = None):
     if call:
         await call.answer()
+    if bot_instance is None:
+        bot_instance = main_bot
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Отменить рассылку"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty, chat=empty))
     )
 
     text = dedent(_("""
@@ -333,76 +360,79 @@ async def send_bot_mailing_menu(bot: Bot, call: ty.Optional[types.CallbackQuery]
     if call:
         await edit_or_create(call, text, keyboard, parse_mode="HTML")
     else:
-        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+        await bot_instance.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
 
 
-@dp.message_handler(state="wait_mailing_text",
-                    content_types=[types.ContentType.TEXT,
+@router.message(StateFilter("wait_mailing_text"),
+                lambda m: m.content_type in [types.ContentType.TEXT,
                                    types.ContentType.LOCATION,
                                    types.ContentType.DOCUMENT,
                                    types.ContentType.PHOTO,
                                    types.ContentType.AUDIO,
-                                   types.ContentType.VIDEO])  # TODO: not command
+                                   types.ContentType.VIDEO] and (not m.text or not m.text.startswith("/")))
 async def mailing_text_received(message: types.Message, state: FSMContext):
-    async with state.proxy() as proxy:
-        bot_id = proxy["bot_id"]
-        proxy["mailing_content_type"] = message.content_type
+    data = await state.get_data()
+    bot_id = data["bot_id"]
+    data["mailing_content_type"] = message.content_type
 
-        buffer = BytesIO()
+    buffer = BytesIO()
 
-        if message.content_type == types.ContentType.TEXT:
-            proxy["mailing_text"] = message.html_text
-        elif message.content_type == types.ContentType.LOCATION:
-            proxy["mailing_location"] = message.location
-        elif message.content_type in (types.ContentType.PHOTO, types.ContentType.DOCUMENT, types.ContentType.AUDIO,
-                types.ContentType.VIDEO):
-            proxy["mailing_caption"] = message.caption
+    if message.content_type == types.ContentType.TEXT:
+        data["mailing_text"] = message.html_text
+    elif message.content_type == types.ContentType.LOCATION:
+        data["mailing_location"] = message.location
+    elif message.content_type in (types.ContentType.PHOTO, types.ContentType.DOCUMENT, types.ContentType.AUDIO,
+            types.ContentType.VIDEO):
+        data["mailing_caption"] = message.caption
 
-            if message.content_type == types.ContentType.PHOTO:
-                obj = message.photo[-1]
-            elif message.content_type == types.ContentType.DOCUMENT:
-                obj = message.document
-            elif message.content_type == types.ContentType.AUDIO:
-                obj = message.audio
-            elif message.content_type == types.ContentType.VIDEO:
-                obj = message.video
-            if obj.file_size and obj.file_size > 4194304:
-                return await message.answer(_("Слишком большой файл (4 Мб максимум)"))
+        if message.content_type == types.ContentType.PHOTO:
+            obj = message.photo[-1]
+        elif message.content_type == types.ContentType.DOCUMENT:
+            obj = message.document
+        elif message.content_type == types.ContentType.AUDIO:
+            obj = message.audio
+        elif message.content_type == types.ContentType.VIDEO:
+            obj = message.video
+        if obj.file_size and obj.file_size > 4194304:
+            return await message.answer(_("Слишком большой файл (4 Мб максимум)"))
 
-            try:
-                await obj.download(buffer, timeout=5)
-            except Exception as err:
-                logging.error("Error downloading file")
-                logging.error(err, exc_info=True)
-                return await message.answer(_("Не удалось загрузить файл (слишком большой размер?)"))
-            proxy["mailing_data"] = buffer.getvalue()
-            proxy["mailing_file_name"] = getattr(obj, "file_name", None)
-        _message_id = await send_stored_message(proxy, AioBot.get_current(), message.chat.id)
+        try:
+            await obj.download(buffer, timeout=5)
+        except Exception as err:
+            logging.error("Error downloading file")
+            logging.error(err, exc_info=True)
+            return await message.answer(_("Не удалось загрузить файл (слишком большой размер?)"))
+        data["mailing_data"] = buffer.getvalue()
+        data["mailing_file_name"] = getattr(obj, "file_name", None)
+    await state.update_data(data)
+    _message_id = await send_stored_message(data, main_bot, message.chat.id)
 
     keyboard = types.InlineKeyboardMarkup(row_width=1)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Отменить рассылку"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot_id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot_id), operation=empty, chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Да, начать рассылку"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot_id, operation="go_go_mailing",
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot_id), operation="go_go_mailing",
                                                                    chat=empty))
     )
 
-    await AioBot.get_current().send_message(message.chat.id, reply_to_message_id=_message_id,
+    await main_bot.send_message(message.chat.id, reply_to_message_id=_message_id,
                                             text="Вы уверены, что хотите разослать это сообщение всем пользователям?",
                                             reply_markup=keyboard)
 
 
 async def send_bot_statistic_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None,
-                                  chat_id: ty.Optional[int] = None):
+                                  chat_id: ty.Optional[int] = None, bot_instance: AioBot = None):
     if call:
         await call.answer()
+    if bot_instance is None:
+        bot_instance = main_bot
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Назад"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty, chat=empty))
     )
 
     text = dedent(_("""
@@ -417,42 +447,48 @@ async def send_bot_statistic_menu(bot: Bot, call: ty.Optional[types.CallbackQuer
     if call:
         await edit_or_create(call, text, keyboard, parse_mode="HTML")
     else:
-        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+        await bot_instance.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
 
 
 async def send_bot_second_text_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None,
-                                    chat_id: ty.Optional[int] = None, state=None):
+                                    chat_id: ty.Optional[int] = None, state=None, bot_instance: AioBot = None):
     if call:
         await call.answer()
 
-    async with state.proxy() as proxy:
-        lang = proxy.get("lang", "none")
+    if bot_instance is None:
+        bot_instance = main_bot
+
+    if state:
+        data = await state.get_data()
+        lang = data.get("lang", "none")
+    else:
+        lang = "none"
 
     prepared_languages = {ln.locale: ln.text for ln in await bot.second_texts}
 
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Завершить редактирование"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty, chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Предыдущий текст"),
-                                   callback_data=menu_callback.new(level=2, bot_id=bot.id, operation="text",
+                                   callback_data=create_callback_data(level="2", bot_id=str(bot.id), operation="text",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Шаблоны ответов..."),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id, operation="templates",
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot.id), operation="templates",
                                                                    chat=empty))
     )
     keyboard.insert(
         types.InlineKeyboardButton(text=_("Сбросить текст"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot.id),
                                                                    operation="reset_second_text", chat=empty))
     )
     keyboard.add(
         types.InlineKeyboardButton(text=("🟢 " if lang == "none" else "") + _("[все языки]"),
-                                   callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                   callback_data=create_callback_data(level="3", bot_id=str(bot.id),
                                                                    operation="alang_none", chat=empty))
     )
     for code, name in languages.items():
@@ -463,7 +499,7 @@ async def send_bot_second_text_menu(bot: Bot, call: ty.Optional[types.CallbackQu
             prefix = "✔️ "
         keyboard.insert(
             types.InlineKeyboardButton(text=prefix + name,
-                                       callback_data=menu_callback.new(level=3, bot_id=bot.id,
+                                       callback_data=create_callback_data(level="3", bot_id=str(bot.id),
                                                                        operation=f"alang_{code}",
                                                                        chat=empty))
         )
@@ -482,17 +518,19 @@ async def send_bot_second_text_menu(bot: Bot, call: ty.Optional[types.CallbackQu
     if call:
         await edit_or_create(call, text, keyboard, parse_mode="HTML")
     else:
-        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+        await bot_instance.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
 
 
 async def send_bot_templates_menu(bot: Bot, call: ty.Optional[types.CallbackQuery] = None,
-                                  chat_id: ty.Optional[int] = None):
+                                  chat_id: ty.Optional[int] = None, bot_instance: AioBot = None):
     if call:
         await call.answer()
+    if bot_instance is None:
+        bot_instance = main_bot
     keyboard = types.InlineKeyboardMarkup(row_width=2)
     keyboard.insert(
         types.InlineKeyboardButton(text=_("<< Завершить редактирование"),
-                                   callback_data=menu_callback.new(level=1, bot_id=bot.id, operation=empty, chat=empty))
+                                   callback_data=create_callback_data(level="1", bot_id=str(bot.id), operation=empty, chat=empty))
     )
 
     text = dedent(_("""
@@ -519,14 +557,14 @@ async def send_bot_templates_menu(bot: Bot, call: ty.Optional[types.CallbackQuer
     if call:
         await edit_or_create(call, text, keyboard, parse_mode="HTML")
     else:
-        await AioBot.get_current().send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
+        await bot_instance.send_message(chat_id, text, reply_markup=keyboard, parse_mode="HTML")
 
 
-@dp.message_handler(state="wait_start_text", content_types="text", regexp="^[^/].+")  # Not command
+@router.message(StateFilter("wait_start_text"), lambda m: m.content_type == types.ContentType.TEXT and m.text and not m.text.startswith("/"))
 async def start_text_received(message: types.Message, state: FSMContext):
-    async with state.proxy() as proxy:
-        bot_id = proxy.get("bot_id")
-        lang = proxy.get("lang", "none")
+    data = await state.get_data()
+    bot_id = data.get("bot_id")
+    lang = data.get("lang", "none")
 
     bot = await Bot.get_or_none(pk=bot_id)
     if lang == "none":
@@ -539,14 +577,14 @@ async def start_text_received(message: types.Message, state: FSMContext):
         if not created:
             obj.text = message.html_text
             await obj.save(update_fields=["text"])
-    await send_bot_text_menu(bot, chat_id=message.chat.id, state=state)
+    await send_bot_text_menu(bot, chat_id=message.chat.id, state=state, bot_instance=main_bot)
 
 
-@dp.message_handler(state="wait_second_text", content_types="text", regexp="^[^/].+")  # Not command
+@router.message(StateFilter("wait_second_text"), lambda m: m.content_type == types.ContentType.TEXT and m.text and not m.text.startswith("/"))
 async def second_text_received(message: types.Message, state: FSMContext):
-    async with state.proxy() as proxy:
-        bot_id = proxy.get("bot_id")
-        lang = proxy.get("lang", "none")
+    data = await state.get_data()
+    bot_id = data.get("bot_id")
+    lang = data.get("lang", "none")
 
     bot = await Bot.get_or_none(pk=bot_id)
     if lang == "none":
@@ -562,13 +600,13 @@ async def second_text_received(message: types.Message, state: FSMContext):
         if not bot.second_text:
             bot.second_text = message.html_text
             await bot.save(update_fields=["second_text"])
-    await send_bot_second_text_menu(bot, chat_id=message.chat.id, state=state)
+    await send_bot_second_text_menu(bot, chat_id=message.chat.id, state=state, bot_instance=main_bot)
 
 
-@dp.message_handler(state="wait_template", content_types="text", regexp="^[^/](.+)?")  # Not command
+@router.message(StateFilter("wait_template"), lambda m: m.content_type == types.ContentType.TEXT and (not m.text or not m.text.startswith("/")))
 async def template_received(message: types.Message, state: FSMContext):
-    async with state.proxy() as proxy:
-        bot_id = proxy.get("bot_id")
+    data = await state.get_data()
+    bot_id = data.get("bot_id")
     bot = await Bot.get_or_none(pk=bot_id)
 
     if message.text.isdigit():
@@ -595,15 +633,16 @@ async def template_received(message: types.Message, state: FSMContext):
                 template = DefaultAnswer(text=message.text, bot=bot)
                 await template.save()
 
-    await send_bot_templates_menu(bot, chat_id=message.chat.id)
+    await send_bot_templates_menu(bot, chat_id=message.chat.id, bot_instance=main_bot)
 
 
-@dp.callback_query_handler(menu_callback.filter(), state="*")
-async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMContext):
+@router.callback_query(lambda c: c.data and c.data.startswith("menu:"), StateFilter("*"))
+async def callback(call: types.CallbackQuery, state: FSMContext):
+    callback_data = parse_callback_data(call.data)
     level = callback_data.get("level")
 
     if level == "0":
-        return await send_bots_menu(call.message.chat.id, call.from_user.id, call)
+        return await send_bots_menu(call.message.chat.id, call.from_user.id, call, bot_instance=main_bot)
 
     bot_id = callback_data.get("bot_id")
     bot = await Bot.get_or_none(id=bot_id)
@@ -612,12 +651,12 @@ async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMCon
         return
 
     if level == "1":
-        await state.reset_state()
+        await state.clear()
         return await send_bot_menu(bot, call)
 
     operation = callback_data.get("operation")
     if level == "2":
-        await state.reset_state()
+        await state.clear()
         if operation == "chat":
             return await send_chats_menu(bot, call)
         if operation == "delete":
@@ -632,14 +671,12 @@ async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMCon
             if not await bot.mailing_users:
                 return await call.answer(_("Нет пользователей для рассылки"))
             await state.set_state("wait_mailing_text")
-            async with state.proxy() as proxy:
-                proxy["bot_id"] = bot.id
-            return await send_bot_mailing_menu(bot, call)
+            await state.update_data({"bot_id": bot.id})
+            return await send_bot_mailing_menu(bot, call, bot_instance=main_bot)
         if operation == "text":
             await state.set_state("wait_start_text")
-            async with state.proxy() as proxy:
-                proxy["bot_id"] = bot.id
-            return await send_bot_text_menu(bot, call, state=state)
+            await state.update_data({"bot_id": bot.id})
+            return await send_bot_text_menu(bot, call, state=state, bot_instance=main_bot)
 
     if level == "3":
         if operation == "delete_yes":
@@ -649,9 +686,8 @@ async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMCon
             return await send_bot_settings_menu(bot, call)
         if operation == "go_go_mailing":
             if (await state.get_state()) == "wait_mailing_text":
-                async with state.proxy() as proxy:
-                    mailing_data = dict(proxy)
-                await state.reset_state()
+                mailing_data = await state.get_data()
+                await state.clear()
 
                 if bot.last_mailing_at and bot.last_mailing_at >= datetime.now(tz=timezone.utc) - timedelta(minutes=5):
                     return await call.answer(_("Рассылка была совсем недавно, подождите немного"), show_alert=True)
@@ -691,29 +727,25 @@ async def callback(call: types.CallbackQuery, callback_data: dict, state: FSMCon
             return await send_bot_settings_menu(bot, call)
         if operation == "reset_text":
             await bot_actions.reset_bot_text(bot, call, state)
-            return await send_bot_text_menu(bot, call, state=state)
+            return await send_bot_text_menu(bot, call, state=state, bot_instance=main_bot)
         if operation.startswith("slang_"):
-            async with state.proxy() as proxy:
-                lang = operation.replace("slang_", "")
-                if lang == "none" or lang in languages:
-                    proxy["lang"] = lang
-            return await send_bot_text_menu(bot, call, state=state)
+            lang = operation.replace("slang_", "")
+            if lang == "none" or lang in languages:
+                await state.update_data({"lang": lang})
+            return await send_bot_text_menu(bot, call, state=state, bot_instance=main_bot)
         if operation == "next_text":
             await state.set_state("wait_second_text")
-            async with state.proxy() as proxy:
-                proxy["bot_id"] = bot.id
-            return await send_bot_second_text_menu(bot, call, state=state)
+            await state.update_data({"bot_id": bot.id})
+            return await send_bot_second_text_menu(bot, call, state=state, bot_instance=main_bot)
         if operation.startswith("alang_"):
-            async with state.proxy() as proxy:
-                lang = operation.replace("alang_", "")
-                if lang == "none" or lang in languages:
-                    proxy["lang"] = lang
-            return await send_bot_second_text_menu(bot, call, state=state)
+            lang = operation.replace("alang_", "")
+            if lang == "none" or lang in languages:
+                await state.update_data({"lang": lang})
+            return await send_bot_second_text_menu(bot, call, state=state, bot_instance=main_bot)
         if operation == "reset_second_text":
             await bot_actions.reset_bot_second_text(bot, call, state)
-            return await send_bot_second_text_menu(bot, call, state=state)
+            return await send_bot_second_text_menu(bot, call, state=state, bot_instance=main_bot)
         if operation == "templates":
             await state.set_state("wait_template")
-            async with state.proxy() as proxy:
-                proxy["bot_id"] = bot.id
-            return await send_bot_templates_menu(bot, call)
+            await state.update_data({"bot_id": bot.id})
+            return await send_bot_templates_menu(bot, call, bot_instance=main_bot)

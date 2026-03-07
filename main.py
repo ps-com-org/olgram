@@ -25,14 +25,16 @@ async def init_database():
 
 async def init_olgram():
     from olgram.router import bot, dp
-    dp.setup_middleware(AccessMiddleware(OlgramSettings.admin_ids()))
+    from olgram.utils.permissions import AccessMiddleware
+    dp.message.middleware(AccessMiddleware(OlgramSettings.admin_ids()))
+    dp.callback_query.middleware(AccessMiddleware(OlgramSettings.admin_ids()))
     from aiogram.types import BotCommand
     await bot.set_my_commands(
         [
-            BotCommand("start", _("Запустить бота")),
-            BotCommand("addbot", _("Добавить бот")),
-            BotCommand("mybots", _("Управление ботами")),
-            BotCommand("help", _("Справка"))
+            BotCommand(command="start", description=_("Запустить бота")),
+            BotCommand(command="addbot", description=_("Добавить бот")),
+            BotCommand(command="mybots", description=_("Управление ботами")),
+            BotCommand(command="help", description=_("Справка"))
         ]
     )
 
@@ -55,7 +57,8 @@ def main():
 
     if not args.onlyserver:
         print("Run olgram polling")
-        loop.create_task(dp.start_polling())
+        from olgram.router import bot
+        loop.create_task(dp.start_polling(bot))
     if not args.noserver:
         print("Run olgram server")
         loop.create_task(server_main().start())

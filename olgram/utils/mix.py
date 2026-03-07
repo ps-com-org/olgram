@@ -1,7 +1,7 @@
 import logging
 from io import BytesIO
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
-from aiogram.utils.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError
 from aiogram import types, Bot as AioBot
 
 from typing import Optional

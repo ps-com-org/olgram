@@ -2,16 +2,17 @@
 Здесь некоторые команды администратора
 """
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
 from olgram.models import models
 
-from olgram.router import dp
+from olgram.router import router
 from olgram.settings import OlgramSettings
 from locales.locale import _
 
 
-@dp.message_handler(commands=["notifyowner"], state="*")
+@router.message(Command("notifyowner"), StateFilter("*"))
 async def notify(message: types.Message, state: FSMContext):
     """
     Команда /notify-owner
@@ -21,7 +22,7 @@ async def notify(message: types.Message, state: FSMContext):
         await message.answer(_("Недостаточно прав"))
         return
 
-    bot_name = message.get_args()
+    bot_name = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
 
     if not bot_name:
         await message.answer(_("Нужно указать имя бота"))
@@ -43,15 +44,15 @@ async def notify(message: types.Message, state: FSMContext):
                            "Напишите 'Пропустить' чтобы отменить").format(bot_name), reply_markup=markup)
 
 
-@dp.message_handler(state="wait_owner_notify_message")
+@router.message(StateFilter("wait_owner_notify_message"))
 async def on_notify_text(message: types.Message, state: FSMContext):
     if not message.text:
-        await state.reset_state(with_data=True)
+        await state.clear()
         await message.answer(_("Поддерживается только текст"), reply_markup=types.ReplyKeyboardRemove())
         return
 
     if message.text == _("Пропустить"):
-        await state.reset_state(with_data=True)
+        await state.clear()
         await message.answer(_("Отменено"), reply_markup=types.ReplyKeyboardRemove())
         return
 
@@ -64,10 +65,10 @@ async def on_notify_text(message: types.Message, state: FSMContext):
     await message.answer("Точно отправить?", reply_markup=markup)
 
 
-@dp.message_handler(state="wait_owner_notify_message_confirm")
+@router.message(StateFilter("wait_owner_notify_message_confirm"))
 async def on_notify_message_confirm(message: types.Message, state: FSMContext):
     if not message.text or (message.text != _("Отправить")):
-        await state.reset_state(with_data=True)
+        await state.clear()
         await message.answer(_("Отменено"), reply_markup=types.ReplyKeyboardRemove())
         return
 
@@ -76,6 +77,6 @@ async def on_notify_message_confirm(message: types.Message, state: FSMContext):
     text = data["notify_text"]
     chat_id = (await bot.owner).telegram_id
 
-    await state.reset_state(with_data=True)
+    await state.clear()
     await message.bot.send_message(chat_id, text=text)
     await message.answer(_("Отправлено"), reply_markup=types.ReplyKeyboardRemove())

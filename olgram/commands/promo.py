@@ -3,17 +3,18 @@
 """
 
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
 from olgram.models import models
 from uuid import UUID
 
-from olgram.router import dp
+from olgram.router import router
 from olgram.settings import OlgramSettings
 from locales.locale import _
 
 
-@dp.message_handler(commands=["newpromo"], state="*")
+@router.message(Command("newpromo"), StateFilter("*"))
 async def new_promo(message: types.Message, state: FSMContext):
     """
     Команда /newpromo
@@ -29,7 +30,7 @@ async def new_promo(message: types.Message, state: FSMContext):
     await promo.save()
 
 
-@dp.message_handler(commands=["delpromo"], state="*")
+@router.message(Command("delpromo"), StateFilter("*"))
 async def del_promo(message: types.Message, state: FSMContext):
     """
     Команда /delpromo
@@ -40,7 +41,8 @@ async def del_promo(message: types.Message, state: FSMContext):
         return
 
     try:
-        uuid = UUID(message.get_args().strip())
+        args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
+        uuid = UUID(args.strip())
         promo = await models.Promo.get_or_none(code=uuid)
     except ValueError:
         return await message.answer(_("Неправильный токен"))
@@ -59,13 +61,14 @@ async def del_promo(message: types.Message, state: FSMContext):
     await message.answer(_("Промокод отозван"))
 
 
-@dp.message_handler(commands=["setpromo"], state="*")
+@router.message(Command("setpromo"), StateFilter("*"))
 async def setpromo(message: types.Message, state: FSMContext):
     """
     Команда /setpromo
     """
 
-    arg = message.get_args()
+    args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
+    arg = args
     if not arg:
         return await message.answer(_("Укажите аргумент: промокод. Например: <pre>/setpromo my-promo-code</pre>"),
                                     parse_mode="HTML")

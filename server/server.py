@@ -43,8 +43,8 @@ async def register_token(bot: Bot) -> bool:
             max_connections=1,
         )
         await a_bot.set_my_commands([
-            BotCommand("/start", _("(Пере)запустить бота")),
-            BotCommand("/security_policy", _("Политика конфиденциальности"))
+            BotCommand(command="start", description=_("(Пере)запустить бота")),
+            BotCommand(command="security_policy", description=_("Политика конфиденциальности"))
         ])
         return res
     finally:
@@ -70,7 +70,8 @@ def main():
     loop = get_event_loop()
 
     app = web.Application()
-    app.router.add_route('*', r"/{name}", CustomRequestHandler, name='webhook_handler')
+    handler = CustomRequestHandler()
+    app.router.add_route('*', r"/{name}", handler, name='webhook_handler')
 
     context = None
     if ServerSettings.use_custom_cert():

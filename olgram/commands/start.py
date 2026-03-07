@@ -2,23 +2,24 @@
 Здесь простые команды на первом уровне вложенности: /start /help
 """
 
-from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram import types, Router
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
 from textwrap import dedent
 from olgram.settings import OlgramSettings
 from olgram.utils.permissions import public
 from locales.locale import _
 
-from olgram.router import dp
+from olgram.router import router
 
 
-@dp.message_handler(commands=["start"], state="*")
+@router.message(Command("start"), StateFilter("*"))
 @public()
 async def start(message: types.Message, state: FSMContext):
     """
     Команда /start
     """
-    await state.reset_state()
+    await state.clear()
 
     await message.answer(dedent(_("""
     Olgram Bot — это конструктор ботов обратной связи в Telegram. Подробнее \
@@ -31,10 +32,10 @@ async def start(message: types.Message, state: FSMContext):
     /mybots - управление ботами
 
     /help - помощь
-    """)), parse_mode="html", disable_web_page_preview=True)
+    """)), parse_mode="html", link_preview_options={"is_disabled": True})
 
 
-@dp.message_handler(commands=["help"], state="*")
+@router.message(Command("help"), StateFilter("*"))
 @public()
 async def help(message: types.Message, state: FSMContext):
     """
@@ -47,10 +48,10 @@ async def help(message: types.Message, state: FSMContext):
     """)).format(OlgramSettings.version()))
 
 
-@dp.message_handler(commands=["chatid"], state="*")
+@router.message(Command("chatid"), StateFilter("*"))
 @public()
 async def chat_id(message: types.Message, state: FSMContext):
     """
     Команда /chatid
     """
-    await message.answer(message.chat.id)
+    await message.answer(str(message.chat.id))

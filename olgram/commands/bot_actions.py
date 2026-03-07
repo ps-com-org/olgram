@@ -7,7 +7,13 @@ from aiogram import types
 from asyncio import sleep
 from datetime import datetime
 from olgram.utils.mix import send_stored_message
-from aiogram.utils import exceptions
+from aiogram.exceptions import (
+    TelegramUnauthorizedError as Unauthorized,
+    TelegramAPIError,
+    TelegramRetryAfter as RetryAfter,
+    TelegramNotFound as ChatNotFound,
+    TelegramForbiddenError as BotBlocked,
+)
 from aiogram import Bot as AioBot
 from olgram.models.models import Bot, BotStartMessage, BotSecondMessage
 from server.server import unregister_token
@@ -20,14 +26,14 @@ async def delete_bot(bot: Bot, call: types.CallbackQuery):
     """
     try:
         await unregister_token(bot.decrypted_token())
-    except exceptions.Unauthorized:
+    except Unauthorized:
         # Вероятно пользователь сбросил токен или удалил бот, это уже не наши проблемы
         pass
     await bot.delete()
     await call.answer(_("Бот удалён"))
     try:
         await call.message.delete()
-    except exceptions.TelegramAPIError:
+    except TelegramAPIError:
         pass
 
 
@@ -89,7 +95,7 @@ async def select_chat(bot: Bot, call: types.CallbackQuery, chat: str):
             try:
                 await chat.delete()
                 await a_bot.leave_chat(chat.chat_id)
-            except exceptions.TelegramAPIError:
+            except TelegramAPIError:
                 pass
         await call.answer(_("Бот вышел из чатов"))
         await a_bot.session.close()
@@ -158,14 +164,14 @@ async def go_mailing(bot: Bot, context: dict) -> int:
             await sleep(0.05)
             try:
                 file_id = await send_stored_message(context, a_bot, user.telegram_id)
-            except exceptions.RetryAfter as err:
+            except RetryAfter as err:
                 await sleep(err.timeout)
                 file_id = await send_stored_message(context, a_bot, user.telegram_id)
 
             if file_id:
                 context["mailing_id"] = file_id
             count += 1
-        except (exceptions.ChatNotFound, exceptions.BotBlocked, exceptions.UserDeactivated):
+        except (ChatNotFound, BotBlocked, TelegramAPIError):
             await user.delete()
         except Exception as err:
             logging.error("mailing error")

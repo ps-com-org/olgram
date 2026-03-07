@@ -1,7 +1,11 @@
 from aiogram import Dispatcher, Bot
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram import Router
 from .settings import BotSettings
 
 
 bot = Bot(BotSettings.token())
-dp = Dispatcher(bot, storage=MemoryStorage())
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+router = Router()
+dp.include_router(router)

@@ -1,9 +1,10 @@
 """
 Здесь работа с ботами на первом уровне вложенности: список ботов, добавление ботов
 """
-from aiogram import types, Bot as AioBot
-from aiogram.dispatcher import FSMContext
-from aiogram.utils.exceptions import Unauthorized, TelegramAPIError
+from aiogram import types, Bot as AioBot, Router
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramUnauthorizedError, TelegramAPIError
 from tortoise.exceptions import IntegrityError
 import re
 from textwrap import dedent
@@ -14,7 +15,7 @@ from olgram.commands.menu import send_bots_menu
 from server.server import register_token
 from locales.locale import _
 
-from olgram.router import dp
+from olgram.router import router
 
 import logging
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 token_pattern = r'[0-9]{8,10}:[a-zA-Z0-9_-]{35}'
 
 
-@dp.message_handler(commands=["mybots"], state="*")
+@router.message(Command("mybots"), StateFilter("*"))
 async def my_bots(message: types.Message, state: FSMContext):
     """
     Команда /mybots (список ботов)
@@ -32,7 +33,7 @@ async def my_bots(message: types.Message, state: FSMContext):
     return await send_bots_menu(message.chat.id, message.from_user.id)
 
 
-@dp.message_handler(commands=["addbot"], state="*")
+@router.message(Command("addbot"), StateFilter("*"))
 async def add_bot(message: types.Message, state: FSMContext):
     """
     Команда /addbot (добавить бота)
@@ -59,7 +60,7 @@ async def add_bot(message: types.Message, state: FSMContext):
     await state.set_state("add_bot")
 
 
-@dp.message_handler(state="add_bot", content_types="text", regexp="^[^/].+")  # Not command
+@router.message(StateFilter("add_bot"), lambda m: m.content_type == types.ContentType.TEXT and m.text and not m.text.startswith("/"))
 async def bot_added(message: types.Message, state: FSMContext):
     """
     Пользователь добавляет бота и мы ждём от него токен
@@ -99,7 +100,7 @@ async def bot_added(message: types.Message, state: FSMContext):
         await test_bot.session.close()
     except ValueError:
         return await on_invalid_token()
-    except Unauthorized:
+    except TelegramUnauthorizedError:
         return await on_dummy_token()
     except TelegramAPIError:
         return await on_unknown_error()
@@ -120,4 +121,4 @@ async def bot_added(message: types.Message, state: FSMContext):
         return await on_unknown_error()
 
     await message.answer(_("Бот добавлен! Список ваших ботов: /mybots"))
-    await state.reset_state()
+    await state.clear()
