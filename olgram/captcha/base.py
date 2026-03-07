@@ -150,8 +150,8 @@ class BaseCaptcha(ABC):
     # --- Абстрактные методы для реализации типа капчи ---
 
     @abstractmethod
-    def create_task(self) -> tuple[str, str]:
-        """Создать задачу. Возвращает (текст_задачи, правильный_ответ)."""
+    def create_task(self, message: types.Message) -> tuple[str, str]:
+        """Создать задачу. Возвращает (готовый_текст_сообщения_для_пользователя, правильный_ответ)."""
         pass
 
     @abstractmethod
@@ -221,7 +221,7 @@ class BaseCaptcha(ABC):
 
         # Нужна новая задача: нет записи / не совпадает тег / бан закончился
         if self._should_create_task(record, tag):
-            task_text, answer = self.create_task()
+            task_message, answer = self.create_task(message)
             now = int(time.time())
             state = CaptchaState(
                 status=CaptchaStatus.PENDING,
@@ -232,9 +232,7 @@ class BaseCaptcha(ABC):
                 attempts=0,
             )
             await self._save_state(key, state)
-            await message.answer(
-                text=_("Решите задачу: ") + task_text,
-            )
+            await message.answer(text=task_message)
             return True
 
         # Ожидаем ответ (pending)

@@ -21,7 +21,7 @@ class DisabledCaptcha(BaseCaptcha):
     ) -> bool:
         return False
 
-    def create_task(self) -> tuple[str, str]:
+    def create_task(self, message: types.Message) -> tuple[str, str]:
         raise NotImplementedError("Капча отключена")
 
     def verify_answer(self, user_answer: str, state: CaptchaState) -> bool:

@@ -7,7 +7,10 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING
 
+from aiogram import types
+
 from olgram.captcha.base import BaseCaptcha, CaptchaState
+from olgram.utils.i18n import get_translator
 
 if TYPE_CHECKING:
     import redis.asyncio as redis
@@ -20,19 +23,20 @@ MAX_ATTEMPTS = 5
 BAN_DURATION_SEC = 900  # 15 минут
 
 
-def _make_task() -> tuple[str, str]:
-    """Сгенерировать задачу и правильный ответ. Возвращает (текст_задачи, ответ)."""
-    a = random.randint(1, 30)
-    b = random.randint(1, 30)
-    return f"{a} + {b} = ?", str(a + b)
-
-
 class MathCaptcha(BaseCaptcha):
     """Математическая капча: сложение двух чисел."""
 
-    def create_task(self) -> tuple[str, str]:
-        """Создать математическую задачу (a + b = ?)."""
-        return _make_task()
+    def create_task(self, message: types.Message) -> tuple[str, str]:
+        """Сгенерировать задачу и готовое сообщение. Возвращает (текст_сообщения, ответ)."""
+        a = random.randint(1, 30)
+        b = random.randint(1, 30)
+        task_text = f"{a} + {b} = ?"
+        _ = get_translator(message)
+        text = (
+            _("Решите задачу: ") + task_text + "\n\n"
+            + _("Введите ответ — только число, без дополнительных знаков.")
+        )
+        return text, str(a + b)
 
     def verify_answer(self, user_answer: str, state: CaptchaState) -> bool:
         """Проверить ответ пользователя по сохранённому verification_value."""

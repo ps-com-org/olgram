@@ -812,6 +812,10 @@ msgid "Решите задачу: "
 msgstr "Solve the problem: "
 
 #: olgram/captcha/math_captcha.py
+msgid "Введите ответ — только число, без дополнительных знаков."
+msgstr "Enter the answer — just the number, no extra characters."
+
+#: olgram/captcha/math_captcha.py
 msgid "Время на решение вышло. Напишите что угодно для новой задачи."
 msgstr "Time is up. Send any message to get a new task."
 
