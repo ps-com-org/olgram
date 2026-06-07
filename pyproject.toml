@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["flake8>=4.0.1,<5"]
+dev = ["flake8>=4.0.1,<5", "ruff>=0.8.0"]
 
 [tool.uv]
 
@@ -39,3 +39,16 @@ build-backend = "uv_build"
 tortoise_orm = "olgram.settings.TORTOISE_ORM"
 location = "./olgram/migrations"
 app = "models"
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+exclude = [".git", "__pycache__", "venv", ".venv", "olgram/migrations"]
+
+[tool.ruff.format]
+# Висячий отступ для аргументов (не выравнивание по скобке)
+indent-style = "space"
+# Один аргумент на строку при переносе — поведение по умолчанию у Ruff/Black
+quote-style = "double"
+# Не ставить запятую после последнего аргумента, если вызов в одну строку
+skip-magic-trailing-comma = false

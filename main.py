@@ -5,7 +5,7 @@ from tortoise import Tortoise
 from olgram.router import dp
 from olgram.settings import TORTOISE_ORM, OlgramSettings
 from olgram.utils.permissions import AccessMiddleware
-from server.custom import init_redis
+from olgram.redis_client import init_redis
 
 import olgram.commands.menu  # noqa: F401
 import olgram.commands.bots  # noqa: F401

@@ -552,6 +552,30 @@ msgstr "(重新)启动机器人"
 msgid "Политика конфиденциальности"
 msgstr "隐私政策"
 
+#: olgram/captcha/base.py olgram/captcha/math_captcha.py
+msgid "Вы временно заблокированы за неудачные попытки ввода капчи. Попробуйте позже."
+msgstr "您因多次验证失败已被暂时封锁，请稍后再试。"
+
+#: olgram/captcha/math_captcha.py
+msgid "Решите задачу: "
+msgstr "请解题："
+
+#: olgram/captcha/math_captcha.py
+msgid "Введите ответ — только число, без дополнительных знаков."
+msgstr "请输入答案，仅数字，不要带其他符号。"
+
+#: olgram/captcha/math_captcha.py
+msgid "Время на решение вышло. Напишите что угодно для новой задачи."
+msgstr "答题时间已过。发送任意内容获取新题目。"
+
+#: olgram/captcha/math_captcha.py
+msgid "Неверно. Попробуйте ещё раз."
+msgstr "错误，请重试。"
+
+#: olgram/captcha/math_captcha.py
+msgid "Верно! Отправьте ваше сообщение ещё раз, пожалуйста."
+msgstr "正确！请再次发送您的消息。"
+
 
 msgid "\n\nЭтот бот создан с помощью @OlgramBot"
 msgstr "\n\n "
