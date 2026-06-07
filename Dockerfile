@@ -1,22 +1,17 @@
-FROM python:3.12-buster
+FROM python:3.12-bookworm
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 ENV PYTHONUNBUFFERED=1 \
-    POETRY_VERSION=1.8.2 \
-    POETRY_VIRTUALENVS_CREATE="false"
+    UV_NO_DEV=1
 
 RUN apt-get update && \
     apt-get install -y gettext build-essential && \
     apt-get clean && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/* && rm -rf /tmp/*
 
-
-RUN pip install "poetry==$POETRY_VERSION"
-
+COPY . /app
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock docker-entrypoint.sh ./
-RUN poetry install --no-interaction --no-ansi --no-dev
-
-COPY . /app
+RUN uv sync --locked
 
 RUN msgfmt locales/zh/LC_MESSAGES/olgram.po -o locales/zh/LC_MESSAGES/olgram.mo --use-fuzzy
 RUN msgfmt locales/uk/LC_MESSAGES/olgram.po -o locales/uk/LC_MESSAGES/olgram.mo --use-fuzzy
