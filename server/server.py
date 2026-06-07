@@ -36,8 +36,12 @@ async def register_token(bot: Bot) -> bool:
         if ServerSettings.use_custom_cert():
             certificate = open(ServerSettings.public_path(), 'rb')
 
-        res = await a_bot.set_webhook(url_for_bot(bot), certificate=certificate, drop_pending_updates=True,
-                                      max_connections=1)
+        res = await a_bot.set_webhook(
+            url_for_bot(bot),
+            certificate=certificate,
+            drop_pending_updates=True,
+            max_connections=1,
+        )
         await a_bot.set_my_commands([
             BotCommand("/start", _("(Пере)запустить бота")),
             BotCommand("/security_policy", _("Политика конфиденциальности"))

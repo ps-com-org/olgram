@@ -1,5 +1,4 @@
 # Пример сложной конфигурации сервера: реверс-прокси
-version: '3'
 services:
   postgres:
     image: postgres:13.4

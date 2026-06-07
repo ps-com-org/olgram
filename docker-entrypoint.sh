@@ -10,6 +10,6 @@ if [ ! -z "${CUSTOM_CERT}" ]; then
 fi
 
 sleep 10
-aerich upgrade
-python migrate.py
-python main.py $@
+uv run aerich upgrade
+uv run migrate.py
+uv run main.py $@

@@ -9,17 +9,22 @@ def dummy_translator(x: str) -> str:
     return x
 
 
+def get_translator(lang: str):
+    """Получить переводчик для языка с обработкой ошибок"""
+    if lang == "ru":
+        return dummy_translator
+    
+    t = gettext.translation("olgram", localedir=locales_dir, languages=[lang], fallback=True)
+    return t.gettext
+    
+
 lang = BotSettings.language()
-if lang == "ru":
-    _ = dummy_translator
-else:
-    t = gettext.translation("olgram", localedir=locales_dir, languages=[lang])
-    _ = t.gettext
+_ = get_translator(lang)
 
 
 translators = {
     "ru": dummy_translator,
-    "uk": gettext.translation("olgram", localedir=locales_dir, languages=["uk"]).gettext,
-    "zh": gettext.translation("olgram", localedir=locales_dir, languages=["zh"]).gettext,
-    "en": gettext.translation("olgram", localedir=locales_dir, languages=["en"]).gettext,
+    "uk": get_translator("uk"),
+    "zh": get_translator("zh"),
+    "en": get_translator("en"),
 }
