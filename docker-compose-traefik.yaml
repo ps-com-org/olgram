@@ -1,0 +1,36 @@
+# Пример реверс-прокси traefik + Let's Encrypt.
+# Живёт на сервере отдельно от olgram (своя папка, свой `docker compose up -d`)
+# и обслуживает все сервисы на хосте через общую сеть `traefik`.
+# Сервисы подключаются к ней как к external-сети, см. docker-compose-prod.yaml.
+services:
+  traefik:
+    image: traefik:v3.6
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - traefik
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme:/acme
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=traefik
+      # укажите свой email для уведомлений Let's Encrypt
+      - --certificatesresolvers.le.acme.email=admin@example.com
+      - --certificatesresolvers.le.acme.storage=/acme/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+
+networks:
+  traefik:
+    name: traefik

@@ -1,0 +1,49 @@
+# Production-конфигурация сервера.
+# Реверс-прокси traefik запускается на сервере отдельно (пример: docker-compose-traefik.yaml)
+# и должен быть поднят раньше: он создаёт общую сеть `traefik`.
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    env_file:
+      - release.env
+    volumes:
+      # с 18-й версии volume монтируется в /var/lib/postgresql (PGDATA = /var/lib/postgresql/18/docker)
+      - database:/var/lib/postgresql
+  redis:
+    image: 'valkey/valkey:9.0.1'
+    restart: unless-stopped
+    volumes:
+      - redis-db:/data
+    env_file:
+      - release.env
+  olgram:
+    build: .
+    restart: unless-stopped
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.olgram.rule=Host(`bot.civsoc.com`)"
+      - "traefik.http.routers.olgram.entrypoints=websecure"
+      - "traefik.http.routers.olgram.tls=true"
+      - "traefik.http.routers.olgram.tls.certresolver=le"
+      - "traefik.http.services.olgram.loadbalancer.server.port=80"
+    env_file:
+      - release.env
+    environment:
+      # приложение слушает APP_PORT (по умолчанию 8080), traefik ходит на порт 80
+      - APP_PORT=80
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  database:
+  redis-db:
+
+networks:
+  traefik:
+    external: true

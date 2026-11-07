@@ -39,13 +39,15 @@
 
 2. Внесите в код все изменения, которые хотите внести
 
-3. В каталоге с репозиторием (рядом с файлами .yaml) создайте файл .env и заполните его, как в инструкции выше
+3. В каталоге с репозиторием (рядом с файлами .yaml) создайте файл release.env и заполните его, как в инструкции выше
 
-4. Соберите и запустите сервер:
+4. Запустите на сервере реверс-прокси traefik (пример: docker-compose-traefik.yaml), если он ещё не запущен
+
+5. Соберите и запустите сервер:
 
 .. code-block:: console
 
-    (bash) $ sudo docker-compose -f docker-compose-src.yaml up -d
+    (bash) $ make docker-update
 
 Дополнительно
 -------------
@@ -56,7 +58,7 @@
 * Наладить реверс-прокси и автоматическое обновление сертификатов - например, с помощью `Traefik <https://github.com/traefik/traefik>`_
 * Скрыть IP сервера с помощью `Cloudflare <https://www.cloudflare.com>`_, чтобы пользователи ботов не могли найти IP адрес хоста по Webhook бота.
 
-Пример более сложной конфигурации есть в файле `docker-compose-full.yaml <https://github.com/civsocit/olgram/blob/main/docker-compose-full.yaml>`_
+Пример более сложной конфигурации есть в файле `docker-compose-prod.yaml <https://github.com/civsocit/olgram/blob/main/docker-compose-prod.yaml>`_
 
 
 Как ограничить доступ к своему боту

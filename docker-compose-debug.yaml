@@ -2,7 +2,7 @@
 # Не используйте её в production!
 services:
   postgres:
-    image: postgres:14
+    image: postgres:18
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -10,7 +10,8 @@ services:
     ports:
       - '5400:5432'
     volumes:
-      - ./var/pg:/var/lib/postgresql/data
+      # с 18-й версии монтируется /var/lib/postgresql (PGDATA = /var/lib/postgresql/18/docker)
+      - ./var/pg:/var/lib/postgresql
   redis:
     image: 'valkey/valkey:9.0.1'
     environment:
