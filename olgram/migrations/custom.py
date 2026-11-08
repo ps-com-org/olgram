@@ -82,6 +82,12 @@ async def migrate():
     logging.info("Run custom migrations...")
     await Tortoise.init(config=TORTOISE_ORM)
 
+    if not await MetaInfo.exists():
+        # Чистая база: init-миграция aerich не создаёт строку meta info (раньше её вставляла SQL-миграция).
+        # Данных ещё нет, переносить нечего — сразу ставим последнюю версию.
+        logging.info("Fresh database, init meta info")
+        await MetaInfo.create(id=0, version=len(_migrations))
+
     for migration in _migrations:
         logging.info(f"Migration {migration.__name__}...")
         await migration()

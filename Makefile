@@ -2,7 +2,7 @@
 -include Makefile.inc
 #####
 
-.PHONY: docker-debug-prepare docker-prod-prepare docker-run docker-update env
+.PHONY: docker-debug-prepare docker-prod-prepare docker-run docker-build docker-update env
 
 # локальная разработка: только postgres + valkey, бот запускается без docker
 docker-debug-prepare:
@@ -21,7 +21,10 @@ docker-prod-prepare: env
 docker-run:
 	docker compose up -d
 
-# обновить docker-compose.yaml из prod, пересобрать образ и перезапустить контейнеры
-docker-update: docker-prod-prepare
+# собрать docker-образ бота по prod-конфигурации
+docker-build: docker-prod-prepare
 	docker compose build
+
+# обновить docker-compose.yaml из prod, пересобрать образ и перезапустить контейнеры
+docker-update: docker-build
 	docker compose up -d --remove-orphans
