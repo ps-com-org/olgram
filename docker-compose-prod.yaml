@@ -6,7 +6,7 @@ services:
     image: postgres:18
     restart: unless-stopped
     env_file:
-      - release.env
+      - .env
     volumes:
       # с 18-й версии volume монтируется в /var/lib/postgresql (PGDATA = /var/lib/postgresql/18/docker)
       - database:/var/lib/postgresql
@@ -16,7 +16,7 @@ services:
     volumes:
       - redis-db:/data
     env_file:
-      - release.env
+      - .env
   olgram:
     build: .
     restart: unless-stopped
@@ -32,7 +32,7 @@ services:
       - "traefik.http.routers.olgram.tls.certresolver=le"
       - "traefik.http.services.olgram.loadbalancer.server.port=80"
     env_file:
-      - release.env
+      - .env
     environment:
       # приложение слушает APP_PORT (по умолчанию 8080), traefik ходит на порт 80
       - APP_PORT=80
